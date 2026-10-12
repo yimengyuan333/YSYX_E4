@@ -31,6 +31,13 @@
 #define U_IMM(i)	 GET_BITS(i, 31, 12)
 #define U_RD(i)	 GET_BITS(i, 11, 7)
 
+//S型
+#define S_IMM_HIGH(i)   GET_BITS(i, 31, 25)
+#define S_RS2(i)    GET_BITS(i, 24, 20)
+#define S_RS1(i)    GET_BITS(i, 19, 15)
+#define S_FUNCT3(i)   GET_BITS(i, 14, 12)
+#define S_IMM_LOW(i)   GET_BITS(i, 11, 7)
+
 uint32_t PC = 0;
 uint32_t GPR[16] = {0};
 uint32_t ROM[1u << 24] = {0};
@@ -83,7 +90,7 @@ void inst_cycle(void){
 	}
 
 	case ADD: {
-		uint32_t fanct7 = R_FUNCT7(inst);
+		uint32_t funct7 = R_FUNCT7(inst);
 		uint32_t rs2 = R_RS2(inst);
 		uint32_t rs1 = R_RS1(inst);
 		uint32_t funct3 = R_FUNCT3(inst);
@@ -93,15 +100,51 @@ void inst_cycle(void){
 	}
 
 	case LW_LBU:{
+        uint32_t imm = I_IMM(inst);
+        uint32_t rs1 = I_RS1(inst);
 		uint32_t funct3 = I_FUNCT3(inst);
+        uint32_t rd = I_RD(inst);
 		
 		switch (funct3) {
 			case 0b010:{
-
-				RAM[rs]
+				GPR[rd] = RAM[rs1 + imm];
+                break;
 			}
+
+            case 0b100:{
+                uint32_t byte = RAM[rs1 + imm];
+                GPR[rd] = 0xff & byte;
+                break;
+            }
+
+            default:
+                break;
 		}
 	}
+
+    case SW_SB:{
+        uint32_t imm_high = S_IMM_HIGH(inst);
+        uint32_t rs2 = S_RS2(inst);
+        uint32_t rs1 = S_RS1(inst);
+        uint32_t funct3 = S_FUNCT3(inst);
+        uint32_t imm_low = S_IMM_LOW(inst);
+
+        switch (funct3) {
+            case 0b010:{
+                RAM[rs1 + ((imm_high << 5) | imm_low)] = GPR[rs2];
+                break;
+            }
+
+            case 0b000:{
+                RAM[rs1 + ((imm_high << 5) | imm_low)] = (GPR[rs2] & 0xff);
+                break;
+            }
+
+            default:
+                break;
+        }
+
+    }
 
 	default:
 		break;
