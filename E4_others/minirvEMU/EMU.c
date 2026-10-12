@@ -1,17 +1,20 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+//这是一个简单的宏拓展，相当于logisim的分线器（？用于从指令中取位
 #define GET_BITS(v, hi, lo)  (((v) >> (lo)) & ((1u << ((hi) - (lo) + 1)) - 1))
 
+//后面发现opcode和funct3的解析很麻烦。各自单独写成宏
 #define OP_IMM  0b0010011u
 #define JALR    0b1100111u
 
+//I型指令的操作对象解析出来
 #define I_RD(i)      GET_BITS(i, 11, 7)
 #define I_FUNCT3(i)  GET_BITS(i, 14, 12)
 #define I_RS1(i)     GET_BITS(i, 19, 15)
 #define I_IMM(i)     ((int32_t)(i) >> 20)
 
+//R型指令的操作对象解析出来
 #define R_RD(i)      GET_BITS(i, 11, 7)
 #define R_FUNCT3(i)  GET_BITS(i, 14, 12)
 #define R_RS1(i)     GET_BITS(i, 19, 15)
@@ -24,17 +27,21 @@ uint32_t M[1u << 24] = {0};
 
 void inst_cycle(void){
 	uint32_t inst    = M[PC >> 2];
-	uint32_t opcode  = GET_BITS(inst, 6, 0);
+	uint32_t opcode  = GET_BITS(inst, 6, 0);//opcode其实是唯一一个可以写在外层switch之外的部分
 	uint32_t next_pc = PC + 4;
 
 	switch (opcode) {
-
+	
+	//确定I型指令
 	case OP_IMM: {
+		//已经确定是I型了之后这些也可以确定下来
 		uint32_t rd  = I_RD(inst);
 		uint32_t rs1 = I_RS1(inst);
 		int32_t  imm = I_IMM(inst);
 
+		//下面开始解析funct3
 		switch (I_FUNCT3(inst)) {
+		//目前funct只涉及000
 		case 0b000:
 			GPR[rd] = GPR[rs1] + (uint32_t)imm;
 			break;
