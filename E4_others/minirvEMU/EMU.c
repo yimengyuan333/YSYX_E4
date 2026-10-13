@@ -15,31 +15,31 @@
 #define SW_SB	0b0100011u
 
 //I型指令的操作对象解析出来
-#define I_RD(i)      GET_BITS(i, 11, 7)
+#define I_RD(i)      (GET_BITS(i, 11, 7) & 0xf)  // 改：RV32E 寄存器号只用低 4 位
 #define I_FUNCT3(i)  GET_BITS(i, 14, 12)
-#define I_RS1(i)     GET_BITS(i, 19, 15)
+#define I_RS1(i)     (GET_BITS(i, 19, 15) & 0xf) // 改：同上
 #define I_IMM(i)     ((int32_t)(i) >> 20)
 
 //R型指令的操作对象解析出来
-#define R_RD(i)      GET_BITS(i, 11, 7)
+#define R_RD(i)      (GET_BITS(i, 11, 7) & 0xf)  // 改：RV32E 寄存器号只用低 4 位
 #define R_FUNCT3(i)  GET_BITS(i, 14, 12)
-#define R_RS1(i)     GET_BITS(i, 19, 15)
-#define R_RS2(i)     GET_BITS(i, 24, 20)
+#define R_RS1(i)     (GET_BITS(i, 19, 15) & 0xf) // 改：同上
+#define R_RS2(i)     (GET_BITS(i, 24, 20) & 0xf) // 改：同上
 #define R_FUNCT7(i)  GET_BITS(i, 31, 25)
 
 //U型指令的操作对象解析出来
 #define U_IMM(i)	 GET_BITS(i, 31, 12)
-#define U_RD(i)	 GET_BITS(i, 11, 7)
+#define U_RD(i)	 (GET_BITS(i, 11, 7) & 0xf)  // 改：RV32E 寄存器号只用低 4 位
 
 //S型
 #define S_IMM_HIGH(i)   GET_BITS(i, 31, 25)
-#define S_RS2(i)    GET_BITS(i, 24, 20)
-#define S_RS1(i)    GET_BITS(i, 19, 15)
+#define S_RS2(i)    (GET_BITS(i, 24, 20) & 0xf) // 改：RV32E 寄存器号只用低 4 位
+#define S_RS1(i)    (GET_BITS(i, 19, 15) & 0xf) // 改：同上
 #define S_FUNCT3(i)   GET_BITS(i, 14, 12)
 #define S_IMM_LOW(i)   GET_BITS(i, 11, 7)
 
 uint32_t PC = 0;
-uint32_t GPR[16] = {0};
+uint32_t GPR[16] = {0}; // RV32E
 uint32_t ROM[1u << 24] = {0};
 uint32_t RAM[1u << 24] = {0};
 
@@ -107,19 +107,20 @@ void inst_cycle(void){
 		
 		switch (funct3) {
 			case 0b010:{
-				GPR[rd] = RAM[rs1 + imm];
+				GPR[rd] = RAM[(GPR[rs1] + imm) >> 2]; // 改：基址用 GPR[rs1]，并按字寻址
                 break;
 			}
 
             case 0b100:{
-                uint32_t byte = RAM[rs1 + imm];
-                GPR[rd] = 0xff & byte;
+                uint32_t addr = GPR[rs1] + imm; // 改：按字节地址取对应字节
+                GPR[rd] = (RAM[addr >> 2] >> ((addr & 3) * 8)) & 0xff;
                 break;
             }
 
             default:
                 break;
 		}
+		break; // 改：补 break，避免贯穿到 SW_SB（原来缺失）
 	}
 
     case SW_SB:{
@@ -128,15 +129,19 @@ void inst_cycle(void){
         uint32_t rs1 = S_RS1(inst);
         uint32_t funct3 = S_FUNCT3(inst);
         uint32_t imm_low = S_IMM_LOW(inst);
+        int32_t  imm = (int32_t)(((imm_high << 5) | imm_low) << 20) >> 20; // 改：S 型立即数符号扩展
 
         switch (funct3) {
             case 0b010:{
-                RAM[rs1 + ((imm_high << 5) | imm_low)] = GPR[rs2];
+				//这里要注意啊，先把拼好数imm左移20位是为了顶到31位，使得>>算数右移是符号拓展
+                RAM[(GPR[rs1] + (uint32_t)imm) >> 2] = GPR[rs2]; // 改：基址用 GPR[rs1]，符号扩展立即数，按字寻址
                 break;
             }
 
             case 0b000:{
-                RAM[rs1 + ((imm_high << 5) | imm_low)] = (GPR[rs2] & 0xff);
+                uint32_t addr = GPR[rs1] + (uint32_t)imm; // 改：只改目标字节，读-改-写
+                uint32_t sh = (addr & 3) * 8;
+                RAM[addr >> 2] = (RAM[addr >> 2] & ~(0xffu << sh)) | ((GPR[rs2] & 0xff) << sh);
                 break;
             }
 
@@ -152,4 +157,17 @@ void inst_cycle(void){
 
 	GPR[0] = 0;
 	PC = next_pc;
+}
+
+int main(int argc, char *argv[]){
+	//把程序镜像读进ROM
+	const char *img = (argc > 1) ? argv[1] : "vga.bin";
+	FILE *fp = fopen(img, "rb");
+	if (fp == NULL) { perror(img); return 1; }
+	size_t size = fread(ROM, 1, sizeof(ROM), fp);
+	fclose(fp);
+
+	//取指-执行：PC 跑出镜像范围就停
+	while (PC < size) inst_cycle();
+	return 0;
 }
