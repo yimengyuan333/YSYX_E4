@@ -122,7 +122,7 @@ void inst_cycle(void){
             default:
                 break;
 		}
-		break; // 改：补 break，避免贯穿到 SW_SB（原来缺失）
+		break;
 	}
 
     case SW_SB:{
@@ -159,12 +159,11 @@ void inst_cycle(void){
 		int32_t imm = I_IMM(inst);
 
 		if(funct3 == 0b000){
-			if(imm == 1){          // ebreak：约定为“程序结束”
-				halted = 1;        // 置位，让 main 跳出取指循环并判定结果
+			if(imm == 1){          // ebreak：约定为程序结束
+				halted = 1;        // 置位，跳出取指循环并判定结果
 			}
-			// imm == 0 即 ecall，本 EMU 暂不实现
 		}
-		break;                     // 别忘：否则会贯穿到 default
+		break;
 	}
 
 	default:
@@ -183,13 +182,24 @@ int main(int argc, char *argv[]){
 	size_t size = fread(ROM, 1, sizeof(ROM), fp);
 	fclose(fp);
 
-	//取指-执行：PC 跑出镜像范围、或执行到 ebreak（halted 置位）就停
+	//运行时环境补丁。约定程序结束前把状态码写入a0，并停在halt处。
+	ROM[0xc >> 2] = 0x00100073; // ebreak
+	//什么时候循环会一直运行？
 	while (!halted && PC < size) inst_cycle();
 
-	//运行环境约定：程序结束前把状态码写入 a0(x10)，0 表示正确结束
 	if (halted) {
-		if (GPR[10] == 0) printf("HIT GOOD TRAP\n");
-		else              printf("HIT BAD TRAP\n");
+		if (GPR[10] == 0) printf("HIT GOOD TRAP\n");	//置位0就是正确返回码，事实上我们的EMU非常简单
+		else              printf("HIT BAD TRAP\n");	//根本就没有0以外的halted置位
+	} else {
+		printf("没有执行到 ebreak 就结束了：PC=0x%08x, size=%zu\n", PC, size);
 	}
+
+	//调试：打印全部 GPR（RV32E 只有 x0~x15）
+	const char *abi[16] = {"zero","ra","sp","gp","tp","t0","t1","t2",
+	                       "s0","s1","a0","a1","a2","a3","a4","a5"};
+	printf("---- GPR ----\n");
+	for (int i = 0; i < 16; i++)
+		printf("x%-2d %-4s = 0x%08x (%d)\n", i, abi[i], GPR[i], (int32_t)GPR[i]);
+	
 	return 0;
 }
