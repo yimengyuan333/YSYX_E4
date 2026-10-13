@@ -183,7 +183,8 @@ int main(int argc, char *argv[]){
 	fclose(fp);
 
 	//运行时环境补丁。约定程序结束前把状态码写入a0，并停在halt处。
-	ROM[0xc >> 2] = 0x00100073; // ebreak
+	ROM[0xc >> 2] = 0x00100073;
+	
 	//什么时候循环会一直运行？
 	while (!halted && PC < size) inst_cycle();
 
