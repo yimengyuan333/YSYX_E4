@@ -13,6 +13,7 @@
 #define LUI		0b0110111u
 #define LW_LBU	0b0000011u
 #define SW_SB	0b0100011u
+#define SYSTEM	0b1110011u
 
 //I型指令的操作对象解析出来
 #define I_RD(i)      (GET_BITS(i, 11, 7) & 0xf)  // 改：RV32E 寄存器号只用低 4 位
@@ -40,6 +41,7 @@
 
 uint32_t PC = 0;
 uint32_t GPR[16] = {0}; // RV32E
+int halted = 0;			//停止标识
 uint32_t ROM[1u << 24] = {0};
 uint32_t RAM[1u << 24] = {0};
 
@@ -148,8 +150,22 @@ void inst_cycle(void){
             default:
                 break;
         }
+		break;
 
     }
+
+	case SYSTEM:{
+		uint32_t funct3 = I_FUNCT3(inst);
+		int32_t imm = I_IMM(inst);
+
+		if(funct3 == 0b000){
+			if(imm == 1){          // ebreak：约定为“程序结束”
+				halted = 1;        // 置位，让 main 跳出取指循环并判定结果
+			}
+			// imm == 0 即 ecall，本 EMU 暂不实现
+		}
+		break;                     // 别忘：否则会贯穿到 default
+	}
 
 	default:
 		break;
@@ -161,13 +177,19 @@ void inst_cycle(void){
 
 int main(int argc, char *argv[]){
 	//把程序镜像读进ROM
-	const char *img = (argc > 1) ? argv[1] : "vga.bin";
-	FILE *fp = fopen(img, "rb");
-	if (fp == NULL) { perror(img); return 1; }
+	const char *instruction_sequence = (argc > 1) ? argv[1] : "vga.bin";
+	FILE *fp = fopen(instruction_sequence, "rb");
+	if (fp == NULL) { perror(instruction_sequence); return 1; }//打开文件失败了
 	size_t size = fread(ROM, 1, sizeof(ROM), fp);
 	fclose(fp);
 
-	//取指-执行：PC 跑出镜像范围就停
-	while (PC < size) inst_cycle();
+	//取指-执行：PC 跑出镜像范围、或执行到 ebreak（halted 置位）就停
+	while (!halted && PC < size) inst_cycle();
+
+	//运行环境约定：程序结束前把状态码写入 a0(x10)，0 表示正确结束
+	if (halted) {
+		if (GPR[10] == 0) printf("HIT GOOD TRAP\n");
+		else              printf("HIT BAD TRAP\n");
+	}
 	return 0;
 }
