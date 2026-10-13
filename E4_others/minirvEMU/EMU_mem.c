@@ -197,14 +197,14 @@ int main(int argc, char *argv[]){
 		printf("没有执行到 ebreak 就结束了：PC=0x%08x, size=%zu\n", PC, size);
 	}
 
-	//调试：打印全部 GPR（RV32E 只有 x0~x15）
+	//打印全部GPR
 	const char *abi[16] = {"zero","ra","sp","gp","tp","t0","t1","t2",
 	                       "s0","s1","a0","a1","a2","a3","a4","a5"};
 	printf("---- GPR ----\n");
 	for (int i = 0; i < 16; i++)
 		printf("x%-2d %-4s = 0x%08x (%d)\n", i, abi[i], GPR[i], (int32_t)GPR[i]);
 
-	//调试：打印 mem 测试的结果区（测试向量指针最后停在 0x496bf 附近）
+	//打印mem测试的结果区
 	printf("---- RAM[0x49690..0x496bf] ----\n");
 	for (int i = 0; i < 12; i++)
 		printf("RAM[0x%05x] = 0x%08x\n", 0x49690 + i * 4, RAM[(0x49690 >> 2) + i]);
